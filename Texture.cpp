@@ -11,6 +11,27 @@ Texture::~Texture(void)
 
 }
 
+void Texture::init(GLenum tempFormat, GLint width, GLint height)
+{
+	format = tempFormat;
+	isActive = true;
+	glGenTextures(1, &textureID);
+	glBindTexture(GL_TEXTURE_2D, textureID);
+
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+	if(format==GL_DEPTH_COMPONENT24)
+	{
+		std::cout<<"Is it?";
+		glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, GL_DEPTH_COMPONENT, GL_FLOAT, 0);
+	}
+	else
+		glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, GL_RGBA, GL_FLOAT, 0);
+}
+
 void Texture::init(GLenum tempFormat, GLint width, GLint height, GLubyte *data)
 {
 	format = tempFormat;

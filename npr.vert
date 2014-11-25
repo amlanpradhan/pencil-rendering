@@ -1,0 +1,5 @@
+void main()
+{
+	gl_Position = gl_Vertex;
+	gl_TexCoord[0] = gl_multiTexCoord0;
+}

@@ -69,3 +69,13 @@ void Shader::setShader(const char *vertexFile, const char *fragmentFile)
 	glAttachShader(shaderProgram, fragShader);
 	glLinkProgram(shaderProgram);
 }
+
+void Shader::enable()
+{
+	glUseProgram(shaderProgram);
+}
+
+void Shader::disable()
+{
+	glUseProgram(0);
+}

@@ -6,6 +6,8 @@ public:
 	Shader(void);
 	~Shader(void);
 	void setShader(const char *, const char *);
+	void enable();
+	void disable();
 	GLuint shaderProgram;
 
 private:
