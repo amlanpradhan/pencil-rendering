@@ -79,3 +79,21 @@ void Shader::disable()
 {
 	glUseProgram(0);
 }
+
+void Shader::setUniform(const GLchar *uniformName, GLint uniformVal)
+{
+	GLint location = glGetUniformLocation(shaderProgram, uniformName);
+	glUniform1i(location, uniformVal);
+}
+
+void Shader::setUniform(const GLchar *uniformName, GLint uniformVal, GLfloat *x)
+{
+	GLint location = glGetUniformLocation(shaderProgram, uniformName);
+	glUniform2fv(location, uniformVal, x);
+}
+
+void Shader::setAttribute(const GLchar *uniformName, GLfloat x, GLfloat y, GLfloat z)
+{
+	GLint location = glGetUniformLocation(shaderProgram, uniformName);
+	glVertexAttrib3f(location, x, y, z);
+}
