@@ -1,6 +1,5 @@
 #include <iostream>
 #include <cstdlib>
-#include "bmp.h"
 #include "fbo.h"
 #include <GLUT/glut.h>
 #include "Texture.h"
@@ -26,6 +25,9 @@ FBO *curvatureFBO, *zBufFBO;
 
 int xMin, yMin, xMax, yMax, zMin, zMax;
 
+/**
+ * Method to initialize the lighting values in the scene.
+**/
 void initializeLightValues()
 {
     float ambLight[4] = {0.2f, 0.2f, 0.2f, 1.0f};
@@ -57,6 +59,12 @@ void initializeLightValues()
     glEnable(GL_COLOR_MATERIAL);
 }
 
+/**
+ * This is a hack kind of a situation where we want to render all kinds of obj file meshes, 
+ * and to ensure that the different objects fit inside the screen space, 
+ * considering that the vertices are all different inside the object space,
+ * we normalize the screen coordinates accordingly to accomodate most of the objects.
+**/
 void computeBoundaryPoints()
 {
     xMin = mesh->vertices[0][0]; xMax = xMin;
@@ -84,64 +92,45 @@ void computeBoundaryPoints()
     }
 }
 
+/**
+ * Reading the obj file through the trimesh code to retrieve the mesh information.
+ * Also, enabling it to find the curvatures at each vertex.
+**/
 void readFromMesh(char * filename)
 {
     mesh = TriMesh::read(filename);
     if(!mesh)
         exit(1);
-
-    int nv = mesh->vertices.size();
-
-    int nf = mesh->faces.size();
     mesh->need_curvatures();
-
-    int curvSize = mesh->curv1.size();
 }
 
+/**
+ * Method to initialize the shader objects and the texture objects
+**/
 void initShaderObjects()
 {
+    // Initializing all the shader objects
     zBufShader.setShader("zBuffer", "zBuffer");
     nprShader.setShader("npr", "npr");
     curvShader.setShader("curv", "curv");
-    testShader.setShader("npr", "npr");
 
+    // Initializing all the texture objects
     zBufTexture.init(GL_RGBA16F, WIND_WIDTH, WIND_HEIGHT);
     curvTexture.init(GL_RGBA16F, WIND_WIDTH, WIND_HEIGHT);
     
+    // Initializing all the framebuffer objects
     curvatureFBO = new FBO(GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, curvTexture.getID());
     curvatureFBO->updateRBO(WIND_WIDTH, WIND_HEIGHT);
     zBufFBO = new FBO(GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, zBufTexture.getID());
     zBufFBO->updateRBO(WIND_WIDTH, WIND_HEIGHT);
 }
 
-void readFromImage()
-{
-    BMPLoader *bmpLoader = new BMPLoader();
 
-    for(int i=0; i<32; i++)
-    {
-        char filename[100];
-        sprintf(filename, "texture/texture%02d.bmp", i+1);
-        FILE *bmpInput = fopen(filename, "rb");
-        fseek(bmpInput, 0x436L, SEEK_SET);
-        for(int j=0; j<512; j++)
-        {
-            for(int k=0; k<512; k++)
-            {
-                fread(&image[i][j][k][0], 1, 1, bmpInput);
-                image[i][j][k][1] = image[i][j][k][0];
-                image[i][j][k][2] = image[i][j][k][0];
-                image[i][j][k][3] = 0;
-            }
-        }
-    }
-
-    pencilTexture.init(GL_RGB8, WIND_WIDTH, WIND_WIDTH, 32, &image[0][0][0][0]);
-}
-
+/**
+ * Method to read the pencil strokes from the bmp file, and store it as a texture object.
+**/
 void readFromPicture()
 {
-    BMPLoader *bmpLoader = new BMPLoader();
     char filename[100];
     sprintf(filename, "texture30.bmp");
     FILE *bmpInput = fopen(filename, "rb");
@@ -156,10 +145,13 @@ void readFromPicture()
                 tempImage[i][j][3] = 0;
         }
     }
-
     tempTexture.init(GL_RGB8, WIND_WIDTH, WIND_HEIGHT, &tempImage[0][0][0]);
 }
 
+/**
+ * Method to populate the z buffer texture through the z buffer frame buffer object.
+ * In this pass, we compute the object material shading values for each vertex of the object.
+**/
 void populateZBufferFBO()
 {
     zBufShader.enable();
@@ -186,14 +178,16 @@ void populateZBufferFBO()
     zBufShader.disable();
 }
 
+/**
+ * Method to populate the curvature texture through the curvature frame buffer object
+ * In this pass, at each vertex, we get the curvature directions, which is to be used for rotation of texture later in the pipeline.
+**/
 void populateCurvatureFBO()
 {
     curvShader.enable();
     curvatureFBO->bindFBO();
     glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
-    glDisable(GL_TEXTURE_2D);
-    //glColor3ub(255, 255, 255);
-    glColor3ub(0, 0, 0);
+    glColor3ub(255, 255, 255);
     for(TriMesh::Face face : mesh->faces)
     {
         int index1 = face.v[0]; int index2 = face.v[1]; int index3 = face.v[2];
@@ -213,6 +207,13 @@ void populateCurvatureFBO()
     curvShader.disable();
 }
 
+/**
+ * The initialize function
+ * First, we initialize all the shader objects, along with the frame buffer objects mapped with their corresponding texture objects.
+ * Then, we initialize the lighting and material color values.
+ * Then, we initialize the mesh object from the obj file with all the vertices and normal values from the trimesh structure
+ * Lastly, we compute the boundary points of the object on the screen, thereby comptuing the view matrix, glOrtho, etc to ensure that the object coordinates fit onto the screen.
+**/
 void initialize()
 {
     initShaderObjects();
@@ -221,38 +222,27 @@ void initialize()
     computeBoundaryPoints(); 
 }
 
-void testDraw()
-{
-    glEnable(GL_TEXTURE_2D);
-    glBindTexture(GL_TEXTURE_2D, tempTexture.getID());
-    glBegin(GL_QUADS);
-    glTexCoord2f(0.0f, 0.0f); glVertex2f(xMin, yMin);
-    glTexCoord2f(1.0f, 0.0f); glVertex2f(xMax, yMin);
-    glTexCoord2f(1.0f, 1.0f); glVertex2f(xMax, yMax);
-    glTexCoord2f(0.0f, 1.0f); glVertex2f(xMin, yMax);
-    glEnd();
-}
-
+/**
+ * The final step of rendering where the pencil texture is mapped onto the screen.
+ * From the other two textures, we compute the exact points on the screen which needs to be colored.
+**/
 void drawTexture()
 {
-    //glEnable(GL_TEXTURE_2D);
+    // Binding all the texture object values
     glActiveTexture(GL_TEXTURE2);
     glBindTexture(GL_TEXTURE_2D, curvTexture.getID());
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, zBufTexture.getID());
-    glActiveTexture(GL_TEXTURE1);
-    glBindTexture(GL_TEXTURE_3D, pencilTexture.getID());
     glActiveTexture(GL_TEXTURE3);
     glBindTexture(GL_TEXTURE_2D, tempTexture.getID());
-     //glBindTexture(GL_TEXTURE_2D, curvTexture.getID());
    
-    //nprShader.enable();s
-    testShader.enable();
-    testShader.setUniform("texSrc", 0);
-    testShader.setUniform("texPencil", 1);
-    testShader.setUniform("texCur", 2);
-    testShader.setUniform("tempTex", 3);
+    // Enabling the npr shader with all the uniform texture attributes
+    nprShader.enable();
+    nprShader.setUniform("texSrc", 0);
+    nprShader.setUniform("texCur", 2);
+    nprShader.setUniform("tempTex", 3);
 
+    // Mapping the texture onto the whole of screen
     glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
     glBegin(GL_QUADS);
     glTexCoord2f(0.0f, 0.0f); glVertex2f(xMin, yMin);
@@ -261,52 +251,29 @@ void drawTexture()
     glTexCoord2f(0.0f, 1.0f); glVertex2f(xMin, yMax);
     glEnd(); 
     
-   
-    testShader.disable();
-
-   // nprShader.disable(); 
+    // Disabling the texture at the end
+    nprShader.disable();
 }
 
-
-
-
-
-/*void readFromBMP()
-{
-    //RedleavesTexture.bmp, texture,bmp, texture30.bmp
-    BMPLoader * bmpLoader = new BMPLoader();
-    bmpLoader->loadBMP("texture30.bmp");
-   // std::cout<<bmpLoader->imageWidth<<" "<<bmpLoader->imageHeight<<"\n";
-    textureObj.init(GL_RGB8, bmpLoader->imageWidth, bmpLoader->imageHeight, bmpLoader->image);
-        //fclose(bmpInput);
-}*/
-
-
-
-void drawTest()
-{
-    glColor3f(1.0f, 0.0f, 0.0f);
-    for(TriMesh::Face face : mesh->faces)
-    {
-        int index1 = face.v[0]; int index2 = face.v[1]; int index3 = face.v[2];
-        glBegin(GL_TRIANGLES);
-        glVertex3f(mesh->vertices[index1][0], mesh->vertices[index1][1], mesh->vertices[index1][2]);
-        glVertex3f(mesh->vertices[index2][0], mesh->vertices[index2][1], mesh->vertices[index2][2]);
-        glVertex3f(mesh->vertices[index3][0], mesh->vertices[index3][1], mesh->vertices[index3][2]);
-        glEnd();
-    } 
-}
-
+/**
+ * The method to draw the scene objects.
+ * First, we take in the pencil strokes from the bmp file and then store in a texture object
+ * Then, we render the object into a frame buffer object. Its in here that we apply the shading on the object. This object is mapped to a zBufTexture
+ * Then, we render the object into a curvature frame buffer object. Its in here that we store the curvature directions required for rotation of texture imagges. This image is mapped to a curvTexture object
+ * We take all the three textures and map them onto the screen, thereby rendering the pencil shading.
+**/
 void drawScene()
 {
     glOrtho(xMin, xMax, yMin, yMax, zMin, zMax);
-    readFromImage();
     readFromPicture();
     populateZBufferFBO();
     populateCurvatureFBO();
     drawTexture();
 }
 
+/**
+ * Display function of the code
+**/
 void renderScene()
 {
 	glLoadIdentity();
@@ -317,6 +284,9 @@ void renderScene()
     glutSwapBuffers();
 }
 
+/**
+ * Method which deals with all the keyboard press actions
+**/
 static void handleKeyboard(unsigned char key, int x, int y)
 {
     switch(key)
