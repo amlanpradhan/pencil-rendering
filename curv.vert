@@ -1,11 +1,11 @@
-varying vec4 position;
-attribute vec3 maxCurvDir, minCurvDir;
-varying vec3 maxCurv, minCurv;
+attribute vec3 curvatureDirection, minCurvatureDirection;
+varying vec3 curvature, minCurvature;
 
 void main()
 {
-	maxCurv = normalize(vec3(gl_ModelViewMatrix * vec4(maxCurvDir, 0.0)));
-	minCurv = normalize(vec3(gl_ModelViewMatrix * vec4(minCurvDir, 0.0)));
+	//curvature = normalize(vec3(gl_ModelViewMatrix * vec4(curvatureDirection, 0.0)));
+	//minCurvature = normalize(vec3(gl_ModelViewMatrix * vec4(minCurvatureDirection,0.0)));
+	curvature = normalize(curvatureDirection);
+	minCurvature = normalize(minCurvatureDirection);
 	gl_Position = ftransform();
-	position = gl_Position;
 }

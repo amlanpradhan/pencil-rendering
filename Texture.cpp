@@ -25,7 +25,6 @@ void Texture::init(GLenum tempFormat, GLint width, GLint height)
 
 	if(format==GL_DEPTH_COMPONENT24)
 	{
-		std::cout<<"Is it?";
 		glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, GL_DEPTH_COMPONENT, GL_FLOAT, 0);
 	}
 	else

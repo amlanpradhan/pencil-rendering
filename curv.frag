@@ -1,14 +1,13 @@
-varying vec3 maxCurvDir,  minCurvDir;
-varying vec4 position;
+varying vec3 curvature, minCurvature;
 
 vec2 encode(vec3 n)
 {
-	return normalize(n.xy) * sqrt(n.z, 0.5, 0.5);
+	return normalize(n.xy) * sqrt(n.z * 0.5 + 0.5);
 }
 
 void main()
 {
-	vec3 normMaxCurvDir = normalize(maxCurvDir);
-	vec3 normMinCurvDir = normalize(minCurvDir);
-	gl_FragColor = vec4(encode(normMaxCurvDir), encode(normMinCurvDir));
+	vec3 newCurvature = normalize(curvature);
+	vec3 newMinCurvature = normalize(minCurvature);
+	gl_FragColor = vec4(encode(newCurvature),encode(newMinCurvature));
 }
