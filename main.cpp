@@ -1,13 +1,24 @@
+#ifdef __APPLE__
+# include <OPENGL/OpenGL.h>
+# include <GLUT/Glut.h>
+#else
+# include <GL/gl.h>
+# include <GL/glu.h>
+# include <GL/glut.h>
+#endif
 #include <iostream>
 #include <cstdlib>
 #include "fbo.h"
-#include <GLUT/glut.h>
 #include "Texture.h"
 #include "Shader.h"
+#include "canny.h"
 #include "trimesh2/Trimesh.h"
 
-GLubyte image[32][512][512][4];
+//GLubyte image[32][512][512][4];
 GLubyte tempImage[512][512][4];
+
+GLfloat image[512*512*3], eImage[512*512*3];           // edge/contour image
+GLubyte tex_image[512][512][4], finalImage[512][512][4];     // texture in which the edge image will be stored
 
 #define WIND_WIDTH 512
 #define WIND_HEIGHT 512
@@ -19,11 +30,21 @@ using namespace trimesh;
 static int g_window;
 
 Shader nprShader, curvShader, zBufShader, testShader;
-Texture zBufTexture, pencilTexture, curvTexture, tempTexture;
+Texture zBufTexture, pencilTexture, curvTexture, tempTexture, edgeTexture;
 TriMesh * mesh;
 FBO *curvatureFBO, *zBufFBO;
 
 int xMin, yMin, xMax, yMax, zMin, zMax;
+
+//////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+
+
+
+
+
+/////////////////////////////////////////////////////////////////////////////////////////////////
 
 /**
  * Method to initialize the lighting values in the scene.
@@ -47,9 +68,11 @@ void initializeLightValues()
     glLightfv(GL_FRONT_AND_BACK, GL_DIFFUSE, diffMat);
     glLightfv(GL_FRONT_AND_BACK, GL_SPECULAR, specMat);
 
+    glMaterialf(GL_FRONT_AND_BACK, GL_SHININESS, 100.0 );
+
     //TODO: add shininess factor
 
-    GLfloat light_pos[4] = {0.0f, 0.0f, -1.0f, 1.0f};
+    GLfloat light_pos[4] = {0.0f, 0.0f, 1.0f, 0.0f};
 
     glShadeModel(GL_SMOOTH);
     glLightfv(GL_LIGHT0, GL_POSITION, light_pos);
@@ -78,12 +101,12 @@ void computeBoundaryPoints()
         {
             index = face.v[i];
             int val = (int)mesh->vertices[index][0];
-            if(xMin>val)xMin = val-3;
-            else if(xMax<val)xMax = val+3;
+            if(xMin>val)xMin = val-5;
+            else if(xMax<val)xMax = val+5;
 
             val = (int)mesh->vertices[index][1];
-            if(yMin>val)yMin = val-3;
-            else if(yMax<val)yMax = val+3;
+            if(yMin>val)yMin = val-5;
+            else if(yMax<val)yMax = val+5;
 
             val = (int)mesh->vertices[index][2];
             if(zMin>val)zMin = val-3;
@@ -102,6 +125,7 @@ void readFromMesh(char * filename)
     if(!mesh)
         exit(1);
     mesh->need_curvatures();
+    mesh->need_normals();
 }
 
 /**
@@ -110,19 +134,24 @@ void readFromMesh(char * filename)
 void initShaderObjects()
 {
     // Initializing all the shader objects
-    zBufShader.setShader("zBuffer", "zBuffer");
+    //zBufShader.setShader("zBuffer", "zBuffer");
+    zBufShader.setShader("sample", "sample");
     nprShader.setShader("npr", "npr");
     curvShader.setShader("curv", "curv");
+    //testShader.setShader("zBuffer", "zBuffer");
 
     // Initializing all the texture objects
     zBufTexture.init(GL_RGBA16F, WIND_WIDTH, WIND_HEIGHT);
     curvTexture.init(GL_RGBA16F, WIND_WIDTH, WIND_HEIGHT);
+    edgeTexture.init(GL_RGBA16F, WIND_WIDTH, WIND_HEIGHT);
     
     // Initializing all the framebuffer objects
     curvatureFBO = new FBO(GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, curvTexture.getID());
     curvatureFBO->updateRBO(WIND_WIDTH, WIND_HEIGHT);
     zBufFBO = new FBO(GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, zBufTexture.getID());
     zBufFBO->updateRBO(WIND_WIDTH, WIND_HEIGHT);
+    //edgeFBO = new FBO(GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, edgeTexture.getID());
+    //edgeFBO->updateRBO(WIND_WIDTH, WIND_HEIGHT);
 }
 
 
@@ -132,7 +161,8 @@ void initShaderObjects()
 void readFromPicture()
 {
     char filename[100];
-    sprintf(filename, "texture30.bmp");
+    //sprintf(filename, "texture/texture24.bmp");
+    sprintf(filename, "06.bmp");
     FILE *bmpInput = fopen(filename, "rb");
     fseek(bmpInput, 0x436L, SEEK_SET);
     for(int i=0; i<512; i++)
@@ -157,8 +187,6 @@ void populateZBufferFBO()
     zBufShader.enable();
     zBufFBO->bindFBO();
     glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
-    glClearColor (1.0f, 1.0f, 1.0f, 1.0f);
-    glColor4f(1.0f, 0.0f, 0.0f, 1.0f);
 
     for(TriMesh::Face face : mesh->faces)
     {
@@ -169,8 +197,7 @@ void populateZBufferFBO()
         {
             index = face.v[i];
             glVertex3f(mesh->vertices[index][0], mesh->vertices[index][1], mesh->vertices[index][2]);
-            zBufShader.setAttribute("curvatureDirection", mesh->pdir1[index][0], mesh->pdir1[index][1], mesh->pdir1[index][2]);
-            zBufShader.setAttribute("minCurvatureDirection", mesh->pdir2[index][0], mesh->pdir2[index][1], mesh->pdir2[index][2]);
+            glNormal3f(mesh->normals[index][0], mesh->normals[index][1], mesh->normals[index][2]);
         }
         glEnd();
     }
@@ -190,7 +217,6 @@ void populateCurvatureFBO()
     glColor3ub(255, 255, 255);
     for(TriMesh::Face face : mesh->faces)
     {
-        int index1 = face.v[0]; int index2 = face.v[1]; int index3 = face.v[2];
         int index;
         glBegin(GL_TRIANGLES);
         for(int i=0; i<3; i++)
@@ -235,12 +261,15 @@ void drawTexture()
     glBindTexture(GL_TEXTURE_2D, zBufTexture.getID());
     glActiveTexture(GL_TEXTURE3);
     glBindTexture(GL_TEXTURE_2D, tempTexture.getID());
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, edgeTexture.getID());
    
     // Enabling the npr shader with all the uniform texture attributes
     nprShader.enable();
     nprShader.setUniform("texSrc", 0);
     nprShader.setUniform("texCur", 2);
     nprShader.setUniform("tempTex", 3);
+    nprShader.setUniform("edgeTex", 1);
 
     // Mapping the texture onto the whole of screen
     glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
@@ -255,6 +284,109 @@ void drawTexture()
     nprShader.disable();
 }
 
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+void init(){
+    for(int i = 0;i < 512*512*3;i++){
+        image[i] = 0;
+    }
+    
+    for(int x = 0; x < 512;x++){
+        for(int y = 0;y < 512;y++){
+            finalImage[x][y][0] = 0;
+            finalImage[x][y][1] = 0;
+            finalImage[x][y][2] = 0;
+            finalImage[x][y][3] = 0;
+        }
+    }
+}
+
+void detectContour(){
+
+  // glMatrixMode(GL_PROJECTION);
+   // glLoadIdentity();
+    
+    //glOrtho(-1000, 1000, -1000, 1000, -1000, 1000);
+    //testShader.enable();
+    //edgeFBO->bindFBO();
+    //init();
+    glColor3f(0.0, 0.0, 0.0);
+    // render the mesh
+    int nf = mesh->faces.size();
+    int vIndex1, vIndex2, vIndex3;
+    for(TriMesh::Face face : mesh->faces){
+        vIndex1 = face.v[0];
+        vIndex2 = face.v[1];
+        vIndex3 = face.v[2];
+        glBegin(GL_TRIANGLES);
+        glVertex3f(mesh->vertices[vIndex1][0], mesh->vertices[vIndex1][1], mesh->vertices[vIndex1][2]);
+        glVertex3f(mesh->vertices[vIndex2][0], mesh->vertices[vIndex2][1], mesh->vertices[vIndex2][2]);
+        glVertex3f(mesh->vertices[vIndex3][0], mesh->vertices[vIndex3][1], mesh->vertices[vIndex3][2]);
+        glEnd();
+    }
+    
+    //read the pixel data from the rendered mesh scene
+    glReadPixels(0,0,512,512,GL_RGB, GL_FLOAT, &eImage);
+    glutSwapBuffers();
+    
+    for(int i = 0;i < 512*512*3;i++){
+        if(eImage[i] == 0.0){
+            image[i] = 0.5;
+        } else {
+            image[i] = 0.0;
+        }
+    }
+    
+    //perform canny edge detection to get the contour image
+    canny(eImage, 512, 512);
+    
+    char filename[100];
+    sprintf(filename, "texture/texture01.bmp");
+    FILE *bmpInput = fopen(filename, "rb");
+    fseek(bmpInput, 0x436L, SEEK_SET);
+    for(int j=0; j<512; j++)
+    {
+        for(int k=0; k<512; k++)
+        {
+            fread(&tex_image[j][k][0], 1, 1, bmpInput);
+            tex_image[j][k][1] = tex_image[j][k][0];
+            tex_image[j][k][2] = tex_image[j][k][0];
+            tex_image[j][k][3] = 0;
+        }
+    }
+    
+    for(int y=0;y<512;y++){
+        for(int x=0;x<512;x++){
+            if(eImage[(y * 512 + x) * 3 + 0]==0.0)
+            {
+                finalImage[y][x][0] = tex_image[y][x][0];
+                finalImage[y][x][1] = tex_image[y][x][1];
+                finalImage[y][x][2] = tex_image[y][x][2];
+                finalImage[y][x][3] = tex_image[y][x][3];
+            } else if(image[(y * 512 + x) * 3 + 0]==0.5){
+                finalImage[y][x][0] = 255; 
+                finalImage[y][x][1] = 255; 
+                finalImage[y][x][2] = 255; 
+                finalImage[y][x][3] = 255;
+            }
+        }
+    }
+    
+    //glDrawPixels(512, 512, GL_RGB, GL_FLOAT, eImage);
+    
+    //glDrawPixels(512,512, GL_RGBA, GL_UNSIGNED_BYTE, &finalImage[0][0][0]);
+    glEnable(GL_TEXTURE_2D);
+    glBindTexture(GL_TEXTURE_2D, edgeTexture.getID());
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 512, 512, GL_RGBA, GL_UNSIGNED_BYTE, finalImage);
+    glDisable(GL_TEXTURE_2D);
+
+}
+
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
 /**
  * The method to draw the scene objects.
  * First, we take in the pencil strokes from the bmp file and then store in a texture object
@@ -268,7 +400,10 @@ void drawScene()
     readFromPicture();
     populateZBufferFBO();
     populateCurvatureFBO();
+    
+    detectContour();
     drawTexture();
+    
 }
 
 /**
@@ -277,6 +412,7 @@ void drawScene()
 void renderScene()
 {
 	glLoadIdentity();
+    glClearColor(1.0, 1.0, 1.0, 1.0);
 	gluLookAt(0, 0, -1, 0, 0, 0, 0, 1, 0);
 	glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
     initialize();

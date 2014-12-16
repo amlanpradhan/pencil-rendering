@@ -11,7 +11,7 @@ vec2 encode(vec3 n)
 void main()
 {
 	vec3 n, halfV, viewV, lDir;
-	float NdorL, NdotHV;
+	float NdotL, NdotHV;
 	vec4 color = ambientGlobal;
 	float att;
 	n = normalize(normal);
@@ -26,8 +26,5 @@ void main()
 		NdotHV = max(dot(n, halfV), 0.0);
 		color+= (att * gl_FrontMaterial.specular * gl_FrontMaterial.specular * pow(NdotHV, gl_FrontMaterial.shininess));
 	}
-
-	float intensity = max(dot(normal, lightDirection), 0.0);
-	gl_FragColor = vec4(encode(normalize(normal)), position.z*position.z*0.001, NdotL);
-	//gl_FragColor = color;
+	gl_FragColor = vec4(1.0, 0.0, 0.0, 1.0);
 }

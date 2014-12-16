@@ -22,6 +22,7 @@ void main()
 
 	lightDirection = normalize(vec3(gl_LightSource[0].position));
 
-	gl_Position = ftransform();
+	gl_Position = gl_Vertex;
+	//gl_Position = ftransform();
 	position = gl_Position;
 }

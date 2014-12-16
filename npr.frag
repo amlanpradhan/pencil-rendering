@@ -1,7 +1,7 @@
 uniform sampler2D texSrc;
 uniform sampler2D texCur;
-uniform sampler3D texPencil;
 uniform sampler2D tempTex;
+uniform sampler2D edgeTex;
 
 // Remember that we had stored the curvature directions through an encoding scheme.
 // Here we are decoding the vector using a similar scheme to get back the curvature vectors
@@ -22,16 +22,25 @@ vec2 rotateDirections(vec2 dir, vec2 uv)
 void main()
 {
 	// Background color  : Black
-	gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
+	gl_FragColor = vec4(1.0, 1.0, 1.0, 1.0);
+
+	vec4 color = vec4(0.0, 0.0, 0.0, 1.0);
+
+	vec4 edgeColor = texture2D(edgeTex, gl_TexCoord[0].st);
+	if(edgeColor.r==1.0 && edgeColor.g==1.0 && edgeColor.b==1.0)
+		color=color;
+	else if(edgeColor.r > 0.0 || edgeColor.g > 0.0 || edgeColor.b > 0.0)
+		color = -edgeColor;
 
 	// Required for the object color, to identify whether the tex coordinate contains the object or not
 	vec4 srcColor = texture2D(texSrc, gl_TexCoord[0].st);
 
+	//gl_FragColor = srcColor;
+
 	// In the source texture, we have the object red in the background black
 	// So, we give the texture color only for a coordinate containing the object
-	if(srcColor.r == 1.0)
+	if(edgeColor.r > 0.0 || edgeColor.g > 0.0 || edgeColor.b > 0.0)
 	{
-		vec4 color = vec4(0.0, 0.0, 0.0, 1.0);
 
 		// Get the required curvature values from the curv texture object
 		vec4 curvature = texture2D(texCur, gl_TexCoord[0].st);
@@ -53,9 +62,11 @@ void main()
 		color += texture2D(tempTex, 5.0 * rotateDirections(vec2(cos(-2.6), sin(-2.6)), gl_TexCoord[0].st));
 
 		// Darken the color to better simulate the pencil stroke color.
-		color *= 0.5;
+		color *= 0.6;
 		color *= color;	
+		color *= srcColor;
 
 		gl_FragColor = color;
 	}
+
 }
